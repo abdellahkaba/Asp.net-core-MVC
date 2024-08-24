@@ -1,33 +1,60 @@
 using Microsoft.EntityFrameworkCore;
-using mvc1.Data;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using System;
+using mvc1.Data;
+
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure la base de données
 builder.Services.AddDbContext<SchoolContext>(
-    option => option.UseSqlServer(builder.Configuration.GetConnectionString("Default")
-));
+    options => options.UseSqlServer(builder.Configuration.GetConnectionString("Default"))
+);
 
-// Add services to the container.
+// Ajoute les services pour les contrôleurs et les vues
 builder.Services.AddControllersWithViews();
+builder.Services.AddDatabaseDeveloperPageExceptionFilter();
+
+// Configuration des cookies pour qu'ils soient sécurisés
+builder.Services.Configure<CookiePolicyOptions>(options =>
+{
+    options.MinimumSameSitePolicy = SameSiteMode.Strict; // Prévenir les attaques CSRF en utilisant SameSite
+    options.Secure = CookieSecurePolicy.Always; // Assurez-vous que les cookies ne sont envoyés que via HTTPS
+    options.HttpOnly = Microsoft.AspNetCore.CookiePolicy.HttpOnlyPolicy.Always; // Empêcher l'accès par JavaScript
+});
 
 var app = builder.Build();
 
+// Applique la politique de cookie avant toute chose
+app.UseCookiePolicy();
+
+// Initialisation de la base de données
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
-    var context = services.GetRequiredService<SchoolContext>();
-    DbInitializer.Initialize(context);
+    try
+    {
+        var context = services.GetRequiredService<SchoolContext>();
+        DbInitializer.Initialize(context);
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred creating the DB.");
+    }
 }
 
-// Configure the HTTP request pipeline.
+// Configure le pipeline de traitement des requêtes HTTP
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
+    app.UseHsts(); // Enforce HTTPS
 }
 
-app.UseHttpsRedirection();
+app.UseHttpsRedirection(); // Redirige HTTP vers HTTPS
 app.UseStaticFiles();
 
 app.UseRouting();
